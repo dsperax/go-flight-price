@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
@@ -9,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 	"github.com/sperax/flight-price-service/internal/config"
+	"github.com/sperax/flight-price-service/internal/httpx"
 )
 
 func main() {
@@ -22,9 +22,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"status":"ok"}`)
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	log.Printf("starting server env=%s port=%s", cfg.AppEnv, cfg.AppPort)
