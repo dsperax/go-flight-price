@@ -1,0 +1,29 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# Environment variables
+.env
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.idea/
+.vscode/
+
+# Private files
+VIDEO_GUIDE_PTBR.md
