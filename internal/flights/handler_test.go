@@ -40,7 +40,7 @@ func makeHandlerFlight(price float64, duration int) flights.Flight {
 }
 
 func newTestHandler(p flights.FlightProvider) *flights.Handler {
-	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 0)
 	return flights.NewHandler(svc)
 }
 
