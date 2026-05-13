@@ -1,0 +1,828 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Flight Price Service",
+    "description": "API collection for the Go Flight Price Service.\n\n**Quick start:**\n1. Set the `base_url` variable (default: `http://localhost:8080`).\n2. Run **Auth / Login** — the `token` variable is captured automatically.\n3. Run any request under **Flights**.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string",
+      "description": "Populated automatically by the Login request test script."
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Returns `{\"status\": \"ok\"}` when the service is running."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Content-Type is JSON', () => pm.response.to.have.header('Content-Type', 'application/json'));",
+                  "pm.test('Body has status ok', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login – success",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Authenticates with valid credentials and returns a JWT Bearer token.\nThe test script saves the token into the `token` collection variable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('Response has access_token', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(body.token_type).to.eql('Bearer');",
+                  "    pm.expect(body.expires_in).to.be.a('number');",
+                  "",
+                  "    // Save token for subsequent requests",
+                  "    pm.collectionVariables.set('token', body.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login – wrong password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Expects 401 Unauthorized when the password is incorrect."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error code is unauthorized', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login – invalid body",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "not-json"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Expects 400 Bad Request when the body is not valid JSON."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error code is invalid_request', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid_request');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Flights",
+      "item": [
+        {
+          "name": "Search – success (GRU → JFK)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/search?origin=GRU&destination=JFK&date=2026-06-10",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "origin",      "value": "GRU" },
+                { "key": "destination", "value": "JFK" },
+                { "key": "date",        "value": "2026-06-10" }
+              ]
+            },
+            "description": "Returns aggregated flight results from all providers, sorted by price ascending.\nRun **Login – success** first to populate `{{token}}`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Content-Type is JSON', () => pm.response.to.have.header('Content-Type', 'application/json'));",
+                  "",
+                  "pm.test('Response shape is correct', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.origin).to.eql('GRU');",
+                  "    pm.expect(body.destination).to.eql('JFK');",
+                  "    pm.expect(body.date).to.eql('2026-06-10');",
+                  "    pm.expect(body.flights).to.be.an('array').and.not.empty;",
+                  "    pm.expect(body.cheapest_flight).to.be.an('object');",
+                  "    pm.expect(body.fastest_flight).to.be.an('object');",
+                  "    pm.expect(body.cached).to.be.a('boolean');",
+                  "});",
+                  "",
+                  "pm.test('Flights are sorted by price ascending', () => {",
+                  "    const flights = pm.response.json().flights;",
+                  "    for (let i = 1; i < flights.length; i++) {",
+                  "        pm.expect(flights[i].price).to.be.at.least(flights[i - 1].price);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('cheapest_flight has the lowest price', () => {",
+                  "    const body = pm.response.json();",
+                  "    const minPrice = Math.min(...body.flights.map(f => f.price));",
+                  "    pm.expect(body.cheapest_flight.price).to.eql(minPrice);",
+                  "});",
+                  "",
+                  "pm.test('fastest_flight has the lowest duration', () => {",
+                  "    const body = pm.response.json();",
+                  "    const minDuration = Math.min(...body.flights.map(f => f.duration_minutes));",
+                  "    pm.expect(body.fastest_flight.duration_minutes).to.eql(minDuration);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search – cached response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/search?origin=GRU&destination=JFK&date=2026-06-10",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "origin",      "value": "GRU" },
+                { "key": "destination", "value": "JFK" },
+                { "key": "date",        "value": "2026-06-10" }
+              ]
+            },
+            "description": "Same request as above. On the second call the service returns the cached result (`cached: true`).\nRun after **Search – success**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response is cached', () => {",
+                  "    pm.expect(pm.response.json().cached).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search – lowercase IATA codes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/search?origin=gru&destination=jfk&date=2026-06-10",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "origin",      "value": "gru" },
+                { "key": "destination", "value": "jfk" },
+                { "key": "date",        "value": "2026-06-10" }
+              ]
+            },
+            "description": "IATA codes are normalized to uppercase before processing, so lowercase inputs work fine."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 (lowercase IATA normalized)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search – no token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/flights/search?origin=GRU&destination=JFK&date=2026-06-10",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "origin",      "value": "GRU" },
+                { "key": "destination", "value": "JFK" },
+                { "key": "date",        "value": "2026-06-10" }
+              ]
+            },
+            "description": "Expects 401 when the Authorization header is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error code is unauthorized', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search – invalid token (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer this.is.not.valid"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/search?origin=GRU&destination=JFK&date=2026-06-10",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "origin",      "value": "GRU" },
+                { "key": "destination", "value": "JFK" },
+                { "key": "date",        "value": "2026-06-10" }
+              ]
+            },
+            "description": "Expects 401 when the JWT is malformed or uses the wrong secret."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error code is unauthorized', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search – missing origin (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/search?destination=JFK&date=2026-06-10",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "destination", "value": "JFK" },
+                { "key": "date",        "value": "2026-06-10" }
+              ]
+            },
+            "description": "Expects 400 when `origin` query param is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error is invalid_request', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid_request');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search – missing destination (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/search?origin=GRU&date=2026-06-10",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "origin", "value": "GRU" },
+                { "key": "date",   "value": "2026-06-10" }
+              ]
+            },
+            "description": "Expects 400 when `destination` query param is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error is invalid_request', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid_request');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search – missing date (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/search?origin=GRU&destination=JFK",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "origin",      "value": "GRU" },
+                { "key": "destination", "value": "JFK" }
+              ]
+            },
+            "description": "Expects 400 when `date` query param is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error is invalid_request', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid_request');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search – invalid date format (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/search?origin=GRU&destination=JFK&date=10-06-2026",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "search"],
+              "query": [
+                { "key": "origin",      "value": "GRU" },
+                { "key": "destination", "value": "JFK" },
+                { "key": "date",        "value": "10-06-2026" }
+              ]
+            },
+            "description": "Expects 400 when `date` is not in YYYY-MM-DD format."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error is invalid_request', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid_request');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "History",
+      "item": [
+        {
+          "name": "History – success (GRU → JFK)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/history?origin=GRU&destination=JFK",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "history"],
+              "query": [
+                { "key": "origin",      "value": "GRU" },
+                { "key": "destination", "value": "JFK" }
+              ]
+            },
+            "description": "Returns 24 months of historical average flight prices for the given route.\nRun **Login – success** first to populate `{{token}}`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Content-Type is JSON', () => pm.response.to.have.header('Content-Type', 'application/json'));",
+                  "",
+                  "pm.test('Response shape is correct', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.origin).to.eql('GRU');",
+                  "    pm.expect(body.destination).to.eql('JFK');",
+                  "    pm.expect(body.history).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Returns 24 monthly entries (last 2 years)', () => {",
+                  "    pm.expect(pm.response.json().history).to.have.lengthOf(24);",
+                  "});",
+                  "",
+                  "pm.test('Each entry has valid shape', () => {",
+                  "    pm.response.json().history.forEach((m, i) => {",
+                  "        pm.expect(m.year, `entry ${i} year`).to.be.a('number').and.above(0);",
+                  "        pm.expect(m.month, `entry ${i} month`).to.be.within(1, 12);",
+                  "        pm.expect(m.avg_price, `entry ${i} avg_price`).to.be.above(0);",
+                  "        pm.expect(m.currency, `entry ${i} currency`).to.eql('BRL');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History – missing origin (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/history?destination=JFK",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "history"],
+              "query": [
+                { "key": "destination", "value": "JFK" }
+              ]
+            },
+            "description": "Expects 400 when `origin` query param is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error is invalid_request', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid_request');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History – missing destination (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/flights/history?origin=GRU",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "history"],
+              "query": [
+                { "key": "origin", "value": "GRU" }
+              ]
+            },
+            "description": "Expects 400 when `destination` query param is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error is invalid_request', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid_request');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History – no token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/flights/history?origin=GRU&destination=JFK",
+              "host": ["{{base_url}}"],
+              "path": ["flights", "history"],
+              "query": [
+                { "key": "origin",      "value": "GRU" },
+                { "key": "destination", "value": "JFK" }
+              ]
+            },
+            "description": "Expects 401 when the Authorization header is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error code is unauthorized', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Subscribe (SSE)",
+      "item": [
+        {
+          "name": "Subscribe – success (GRU-JFK)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscribe/GRU-JFK",
+              "host": ["{{base_url}}"],
+              "path": ["subscribe", "GRU-JFK"]
+            },
+            "description": "Opens a Server-Sent Events stream for the GRU→JFK route.\n\nThe server emits one event immediately on connect, then repeats every 30 seconds.\nEach event is a JSON payload containing the full flight search response.\n\n**Note:** Postman's Send button will keep the connection open. Use **Cancel** to close it. Check the response header `Content-Type: text/event-stream` and the body for `data: {...}` lines.\n\nRun **Login – success** first to populate `{{token}}`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Content-Type is text/event-stream', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});",
+                  "pm.test('Cache-Control is no-cache', () => {",
+                  "    pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-cache');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subscribe – with explicit date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscribe/GRU-JFK?date=2026-06-10",
+              "host": ["{{base_url}}"],
+              "path": ["subscribe", "GRU-JFK"],
+              "query": [
+                { "key": "date", "value": "2026-06-10" }
+              ]
+            },
+            "description": "Same as the previous request but with an explicit `date` query param instead of the default (tomorrow)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Content-Type is text/event-stream', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subscribe – invalid route format (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscribe/INVALIDROUTE",
+              "host": ["{{base_url}}"],
+              "path": ["subscribe", "INVALIDROUTE"]
+            },
+            "description": "Expects 400 when the route path parameter is not in ORIGIN-DESTINATION format."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error is invalid_request', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid_request');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subscribe – no token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/subscribe/GRU-JFK",
+              "host": ["{{base_url}}"],
+              "path": ["subscribe", "GRU-JFK"]
+            },
+            "description": "Expects 401 when the Authorization header is missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error code is unauthorized', () => {",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

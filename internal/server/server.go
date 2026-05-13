@@ -8,7 +8,9 @@ import (
 	"github.com/sperax/flight-price-service/internal/auth"
 	"github.com/sperax/flight-price-service/internal/config"
 	"github.com/sperax/flight-price-service/internal/flights"
+	"github.com/sperax/flight-price-service/internal/history"
 	"github.com/sperax/flight-price-service/internal/httpx"
+	"github.com/sperax/flight-price-service/internal/sse"
 )
 
 // New builds and returns the application HTTP handler.
@@ -26,10 +28,14 @@ func New(cfg *config.Config, flightProviders []flights.FlightProvider) http.Hand
 
 	flightSvc := flights.NewService(flightProviders, cfg.ProviderTimeoutSeconds, cfg.CacheTTLSeconds)
 	flightHandler := flights.NewHandler(flightSvc)
+	histHandler := history.NewHandler()
+	sseHandler := sse.New(flightSvc)
 
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(cfg.JWTSecret))
 		r.Get("/flights/search", flightHandler.Search)
+		r.Get("/flights/history", histHandler.History)
+		r.Get("/subscribe/{route}", sseHandler.Subscribe)
 	})
 
 	return r

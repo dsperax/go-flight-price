@@ -1,16 +1,19 @@
 package server_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/sperax/flight-price-service/internal/config"
 	"github.com/sperax/flight-price-service/internal/flights"
+	"github.com/sperax/flight-price-service/internal/history"
 	"github.com/sperax/flight-price-service/internal/server"
 )
 
@@ -354,4 +357,141 @@ func TestIntegration_UnknownRoute(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
 	}
+}
+
+// --- history ---
+
+func TestIntegration_History_NoToken(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/flights/history?origin=GRU&destination=JFK")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestIntegration_History_MissingOrigin(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	token := login(t, srv)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/flights/history?destination=JFK", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestIntegration_History_Success(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	token := login(t, srv)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/flights/history?origin=GRU&destination=JFK", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body history.Response
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body.Origin != "GRU" {
+		t.Errorf("expected origin GRU, got %s", body.Origin)
+	}
+	if len(body.History) != 24 {
+		t.Errorf("expected 24 monthly entries, got %d", len(body.History))
+	}
+}
+
+// --- SSE subscribe ---
+
+func TestIntegration_Subscribe_NoToken(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/subscribe/GRU-JFK")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestIntegration_Subscribe_InvalidRoute(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	token := login(t, srv)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/subscribe/INVALIDROUTE", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestIntegration_Subscribe_Success(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	token := login(t, srv)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/subscribe/GRU-JFK", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %s", ct)
+	}
+
+	// Read lines until the first SSE data event is found.
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "data: ") {
+			return // initial event received — test passes
+		}
+	}
+	t.Error("did not receive an SSE data event before timeout")
 }
