@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
+	"github.com/sperax/flight-price-service/internal/auth"
 	"github.com/sperax/flight-price-service/internal/config"
 	"github.com/sperax/flight-price-service/internal/httpx"
 )
@@ -23,6 +24,14 @@ func main() {
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	authHandler := auth.NewHandler(cfg.AuthUsername, cfg.AuthPassword, cfg.JWTSecret, cfg.JWTExpirationMinutes)
+	r.Post("/auth/login", authHandler.Login)
+
+	r.Group(func(r chi.Router) {
+		r.Use(auth.Middleware(cfg.JWTSecret))
+		// flight routes will be registered here in the next steps
 	})
 
 	log.Printf("starting server env=%s port=%s", cfg.AppEnv, cfg.AppPort)
