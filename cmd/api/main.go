@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/joho/godotenv"
+	"github.com/sperax/flight-price-service/internal/config"
 )
 
 func main() {
-	port := os.Getenv("APP_PORT")
-	if port == "" {
-		port = "8080"
-	}
+	// Load .env if present; ignore error in production where env vars are set directly.
+	_ = godotenv.Load()
+
+	cfg := config.Load()
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -26,8 +27,8 @@ func main() {
 		fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
-	log.Printf("server listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
+	log.Printf("starting server env=%s port=%s", cfg.AppEnv, cfg.AppPort)
+	if err := http.ListenAndServe(":"+cfg.AppPort, r); err != nil {
 		log.Fatal(err)
 	}
 }
