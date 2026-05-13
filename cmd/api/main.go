@@ -9,7 +9,9 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/sperax/flight-price-service/internal/auth"
 	"github.com/sperax/flight-price-service/internal/config"
+	"github.com/sperax/flight-price-service/internal/flights"
 	"github.com/sperax/flight-price-service/internal/httpx"
+	"github.com/sperax/flight-price-service/internal/providers"
 )
 
 func main() {
@@ -29,9 +31,17 @@ func main() {
 	authHandler := auth.NewHandler(cfg.AuthUsername, cfg.AuthPassword, cfg.JWTSecret, cfg.JWTExpirationMinutes)
 	r.Post("/auth/login", authHandler.Login)
 
+	flightProviders := []flights.FlightProvider{
+		providers.NewAmadeus(cfg.AmadeusAPIKey),
+		providers.NewSkyscanner(cfg.SkyscannerAPIKey),
+		providers.NewCheapFlights(cfg.CheapFlightsAPIKey),
+	}
+	flightSvc := flights.NewService(flightProviders, cfg.ProviderTimeoutSeconds)
+	flightHandler := flights.NewHandler(flightSvc)
+
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(cfg.JWTSecret))
-		// flight routes will be registered here in the next steps
+		r.Get("/flights/search", flightHandler.Search)
 	})
 
 	log.Printf("starting server env=%s port=%s", cfg.AppEnv, cfg.AppPort)
