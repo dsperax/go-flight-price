@@ -2,22 +2,27 @@ package flights
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/sperax/flight-price-service/internal/cache"
 )
 
 // Service orchestrates concurrent flight searches across multiple providers.
 type Service struct {
 	providers       []FlightProvider
 	providerTimeout time.Duration
+	cache           *cache.Cache[string, FlightSearchResponse]
 }
 
-// NewService creates a new Service with the given providers and per-provider timeout.
-func NewService(providers []FlightProvider, providerTimeoutSeconds int) *Service {
+// NewService creates a new Service with the given providers, per-provider timeout, and cache TTL.
+func NewService(providers []FlightProvider, providerTimeoutSeconds int, cacheTTLSeconds int) *Service {
 	return &Service{
 		providers:       providers,
 		providerTimeout: time.Duration(providerTimeoutSeconds) * time.Second,
+		cache:           cache.New[string, FlightSearchResponse](time.Duration(cacheTTLSeconds) * time.Second),
 	}
 }
 
@@ -28,10 +33,21 @@ type providerResult struct {
 	name    string
 }
 
+// cacheKey returns the cache key for a search request.
+func cacheKey(req FlightSearchRequest) string {
+	return fmt.Sprintf("%s:%s:%s", req.Origin, req.Destination, req.Date)
+}
+
 // Search calls all providers concurrently and aggregates their results.
 // It returns ErrAllProvidersFailed only when every provider fails.
 // Partial failures are included in FlightSearchResponse.ProviderErrors.
 func (s *Service) Search(ctx context.Context, req FlightSearchRequest) (FlightSearchResponse, error) {
+	key := cacheKey(req)
+	if cached, ok := s.cache.Get(key); ok {
+		cached.Cached = true
+		return cached, nil
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, s.providerTimeout)
 	defer cancel()
 
@@ -86,7 +102,7 @@ func (s *Service) Search(ctx context.Context, req FlightSearchRequest) (FlightSe
 	// selectBest is called after sorting so pointers remain valid.
 	cheapest, fastest := selectBest(allFlights)
 
-	return FlightSearchResponse{
+	resp := FlightSearchResponse{
 		Origin:         req.Origin,
 		Destination:    req.Destination,
 		Date:           req.Date,
@@ -94,7 +110,9 @@ func (s *Service) Search(ctx context.Context, req FlightSearchRequest) (FlightSe
 		FastestFlight:  fastest,
 		Flights:        allFlights,
 		ProviderErrors: providerErrors,
-	}, nil
+	}
+	s.cache.Set(key, resp)
+	return resp, nil
 }
 
 // selectBest returns the cheapest and fastest flights from the aggregated slice.

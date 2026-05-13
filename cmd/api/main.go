@@ -36,7 +36,7 @@ func main() {
 		providers.NewSkyscanner(cfg.SkyscannerAPIKey),
 		providers.NewCheapFlights(cfg.CheapFlightsAPIKey),
 	}
-	flightSvc := flights.NewService(flightProviders, cfg.ProviderTimeoutSeconds)
+	flightSvc := flights.NewService(flightProviders, cfg.ProviderTimeoutSeconds, cfg.CacheTTLSeconds)
 	flightHandler := flights.NewHandler(flightSvc)
 
 	r.Group(func(r chi.Router) {

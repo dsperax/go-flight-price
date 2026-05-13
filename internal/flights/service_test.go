@@ -60,7 +60,7 @@ func TestService_AllProvidersSucceed(t *testing.T) {
 	p2 := &stubProvider{name: "P2", flights: []flights.Flight{makeFlight("P2", 2500, 650)}}
 	p3 := &stubProvider{name: "P3", flights: []flights.Flight{makeFlight("P3", 4000, 500)}}
 
-	svc := flights.NewService([]flights.FlightProvider{p1, p2, p3}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p1, p2, p3}, 3, 0)
 	resp, err := svc.Search(context.Background(), validReq)
 
 	if err != nil {
@@ -78,7 +78,7 @@ func TestService_AllProvidersFail(t *testing.T) {
 	p1 := &stubProvider{name: "P1", err: errors.New("timeout")}
 	p2 := &stubProvider{name: "P2", err: errors.New("auth error")}
 
-	svc := flights.NewService([]flights.FlightProvider{p1, p2}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p1, p2}, 3, 0)
 	_, err := svc.Search(context.Background(), validReq)
 
 	if !errors.Is(err, flights.ErrAllProvidersFailed) {
@@ -90,7 +90,7 @@ func TestService_PartialProviderFailure(t *testing.T) {
 	p1 := &stubProvider{name: "P1", flights: []flights.Flight{makeFlight("P1", 3000, 600)}}
 	p2 := &stubProvider{name: "P2", err: errors.New("service unavailable")}
 
-	svc := flights.NewService([]flights.FlightProvider{p1, p2}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p1, p2}, 3, 0)
 	resp, err := svc.Search(context.Background(), validReq)
 
 	if err != nil {
@@ -112,7 +112,7 @@ func TestService_ProviderTimeout(t *testing.T) {
 	fast := &stubProvider{name: "Fast", flights: []flights.Flight{makeFlight("Fast", 3000, 500)}}
 
 	// 100ms timeout — slow provider should be cut off
-	svc := flights.NewService([]flights.FlightProvider{slow, fast}, 0)
+	svc := flights.NewService([]flights.FlightProvider{slow, fast}, 0, 0)
 	// Use a tiny timeout via context instead of the service timeout to keep the test fast
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -138,7 +138,7 @@ func TestService_CheapestAndFastestSelected(t *testing.T) {
 
 	p := &stubProvider{name: "P1", flights: []flights.Flight{cheap, fast, mid}}
 
-	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 0)
 	resp, err := svc.Search(context.Background(), validReq)
 
 	if err != nil {
@@ -155,7 +155,7 @@ func TestService_CheapestAndFastestSelected(t *testing.T) {
 func TestService_ResponseMetadata(t *testing.T) {
 	p := &stubProvider{name: "P1", flights: []flights.Flight{makeFlight("P1", 2000, 500)}}
 
-	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 0)
 	resp, err := svc.Search(context.Background(), validReq)
 
 	if err != nil {
@@ -183,7 +183,7 @@ func TestService_FlightsSortedByPriceAsc(t *testing.T) {
 	}
 	p := &stubProvider{name: "P1", flights: list}
 
-	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 0)
 	resp, err := svc.Search(context.Background(), validReq)
 
 	if err != nil {
@@ -208,7 +208,7 @@ func TestService_SortTieBreakByDuration(t *testing.T) {
 	}
 	p := &stubProvider{name: "P1", flights: list}
 
-	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 0)
 	resp, err := svc.Search(context.Background(), validReq)
 
 	if err != nil {
@@ -229,7 +229,7 @@ func TestService_CheapestIsFirstAfterSort(t *testing.T) {
 		makeFlight("P1", 2500, 500),
 	}}
 
-	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 0)
 	resp, err := svc.Search(context.Background(), validReq)
 
 	if err != nil {
@@ -246,4 +246,98 @@ func TestService_CheapestIsFirstAfterSort(t *testing.T) {
 		t.Errorf("cheapest_flight price %.2f does not match first sorted flight %.2f",
 			resp.CheapestFlight.Price, resp.Flights[0].Price)
 	}
+}
+
+func TestService_CacheHit(t *testing.T) {
+	calls := 0
+	p := &callCountProvider{
+		stubProvider: stubProvider{
+			name:    "P1",
+			flights: []flights.Flight{makeFlight("P1", 2000, 500)},
+		},
+		calls: &calls,
+	}
+
+	// TTL of 5 seconds — second call must hit cache.
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 5)
+	_, _ = svc.Search(context.Background(), validReq)
+	resp, err := svc.Search(context.Background(), validReq)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("expected provider called once, got %d", calls)
+	}
+	if !resp.Cached {
+		t.Error("expected cached=true on second call")
+	}
+}
+
+func TestService_CacheMissAfterTTL(t *testing.T) {
+	calls := 0
+	p := &callCountProvider{
+		stubProvider: stubProvider{
+			name:    "P1",
+			flights: []flights.Flight{makeFlight("P1", 2000, 500)},
+		},
+		calls: &calls,
+	}
+
+	// TTL of 50ms — second call after sleep must miss cache.
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 0)
+	_, _ = svc.Search(context.Background(), validReq)
+
+	time.Sleep(60 * time.Millisecond)
+
+	resp, err := svc.Search(context.Background(), validReq)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if calls < 2 {
+		t.Errorf("expected provider called at least twice after TTL, got %d", calls)
+	}
+	if resp.Cached {
+		t.Error("expected cached=false after TTL expiry")
+	}
+}
+
+func TestService_CacheDifferentKeys(t *testing.T) {
+	calls := 0
+	p := &callCountProvider{
+		stubProvider: stubProvider{
+			name:    "P1",
+			flights: []flights.Flight{makeFlight("P1", 2000, 500)},
+		},
+		calls: &calls,
+	}
+
+	svc := flights.NewService([]flights.FlightProvider{p}, 3, 60)
+
+	req1 := flights.FlightSearchRequest{Origin: "GRU", Destination: "JFK", Date: "2026-06-10"}
+	req2 := flights.FlightSearchRequest{Origin: "GRU", Destination: "LAX", Date: "2026-06-10"}
+
+	_, _ = svc.Search(context.Background(), req1)
+	resp2, err := svc.Search(context.Background(), req2)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 provider calls for different keys, got %d", calls)
+	}
+	if resp2.Cached {
+		t.Error("expected cached=false for different key")
+	}
+}
+
+// callCountProvider wraps stubProvider and counts Search invocations.
+type callCountProvider struct {
+	stubProvider
+	calls *int
+}
+
+func (c *callCountProvider) Search(ctx context.Context, req flights.FlightSearchRequest) ([]flights.Flight, error) {
+	*c.calls++
+	return c.stubProvider.Search(ctx, req)
 }
