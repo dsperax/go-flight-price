@@ -9,7 +9,7 @@ import (
 
 // Service orchestrates concurrent flight searches across multiple providers.
 type Service struct {
-	providers      []FlightProvider
+	providers       []FlightProvider
 	providerTimeout time.Duration
 }
 
