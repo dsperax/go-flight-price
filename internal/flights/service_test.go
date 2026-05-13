@@ -174,3 +174,76 @@ func TestService_ResponseMetadata(t *testing.T) {
 		t.Error("expected cached=false for fresh search")
 	}
 }
+
+func TestService_FlightsSortedByPriceAsc(t *testing.T) {
+	list := []flights.Flight{
+		makeFlight("P1", 5000, 400),
+		makeFlight("P1", 1500, 600),
+		makeFlight("P1", 3000, 550),
+	}
+	p := &stubProvider{name: "P1", flights: list}
+
+	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	resp, err := svc.Search(context.Background(), validReq)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Flights) != 3 {
+		t.Fatalf("expected 3 flights, got %d", len(resp.Flights))
+	}
+	for i := 1; i < len(resp.Flights); i++ {
+		if resp.Flights[i].Price < resp.Flights[i-1].Price {
+			t.Errorf("flights not sorted by price: index %d (%.2f) < index %d (%.2f)",
+				i, resp.Flights[i].Price, i-1, resp.Flights[i-1].Price)
+		}
+	}
+}
+
+func TestService_SortTieBreakByDuration(t *testing.T) {
+	list := []flights.Flight{
+		makeFlight("P1", 2000, 700),
+		makeFlight("P1", 2000, 400),
+		makeFlight("P1", 2000, 550),
+	}
+	p := &stubProvider{name: "P1", flights: list}
+
+	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	resp, err := svc.Search(context.Background(), validReq)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for i := 1; i < len(resp.Flights); i++ {
+		if resp.Flights[i].DurationMinutes < resp.Flights[i-1].DurationMinutes {
+			t.Errorf("tie-break not sorted by duration: index %d (%d min) < index %d (%d min)",
+				i, resp.Flights[i].DurationMinutes, i-1, resp.Flights[i-1].DurationMinutes)
+		}
+	}
+}
+
+func TestService_CheapestIsFirstAfterSort(t *testing.T) {
+	p := &stubProvider{name: "P1", flights: []flights.Flight{
+		makeFlight("P1", 4000, 300),
+		makeFlight("P1", 900, 700),
+		makeFlight("P1", 2500, 500),
+	}}
+
+	svc := flights.NewService([]flights.FlightProvider{p}, 3)
+	resp, err := svc.Search(context.Background(), validReq)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.CheapestFlight == nil {
+		t.Fatal("expected cheapest_flight to be set")
+	}
+	if resp.CheapestFlight.Price != 900 {
+		t.Errorf("expected cheapest price 900, got %.2f", resp.CheapestFlight.Price)
+	}
+	// After sorting, cheapest must be the first element in Flights.
+	if resp.Flights[0].Price != resp.CheapestFlight.Price {
+		t.Errorf("cheapest_flight price %.2f does not match first sorted flight %.2f",
+			resp.CheapestFlight.Price, resp.Flights[0].Price)
+	}
+}
