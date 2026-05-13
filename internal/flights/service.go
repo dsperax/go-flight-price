@@ -2,6 +2,7 @@ package flights
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 )
@@ -74,6 +75,15 @@ func (s *Service) Search(ctx context.Context, req FlightSearchRequest) (FlightSe
 		return FlightSearchResponse{}, ErrAllProvidersFailed
 	}
 
+	// Sort by price ascending; tie-break by duration ascending.
+	sort.Slice(allFlights, func(i, j int) bool {
+		if allFlights[i].Price != allFlights[j].Price {
+			return allFlights[i].Price < allFlights[j].Price
+		}
+		return allFlights[i].DurationMinutes < allFlights[j].DurationMinutes
+	})
+
+	// selectBest is called after sorting so pointers remain valid.
 	cheapest, fastest := selectBest(allFlights)
 
 	return FlightSearchResponse{
