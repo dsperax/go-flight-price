@@ -1,6 +1,7 @@
 package flights_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/sperax/flight-price-service/internal/flights"
@@ -26,8 +27,9 @@ func TestValidate_MissingOrigin(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing origin")
 	}
-	if err.Error() != "origin is required" {
-		t.Fatalf("unexpected message: %s", err.Error())
+	var valErr *flights.ValidationError
+	if !errors.As(err, &valErr) || valErr.Field != "origin" {
+		t.Fatalf("expected ValidationError with field=origin, got %T: %v", err, err)
 	}
 }
 
@@ -40,8 +42,9 @@ func TestValidate_MissingDestination(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing destination")
 	}
-	if err.Error() != "destination is required" {
-		t.Fatalf("unexpected message: %s", err.Error())
+	var valErr *flights.ValidationError
+	if !errors.As(err, &valErr) || valErr.Field != "destination" {
+		t.Fatalf("expected ValidationError with field=destination, got %T: %v", err, err)
 	}
 }
 
@@ -54,8 +57,9 @@ func TestValidate_MissingDate(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing date")
 	}
-	if err.Error() != "date is required" {
-		t.Fatalf("unexpected message: %s", err.Error())
+	var valErr *flights.ValidationError
+	if !errors.As(err, &valErr) || valErr.Field != "date" {
+		t.Fatalf("expected ValidationError with field=date, got %T: %v", err, err)
 	}
 }
 
@@ -78,8 +82,9 @@ func TestValidate_InvalidDateFormat(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error for date %q, got nil", d)
 		}
-		if err.Error() != "date must use YYYY-MM-DD format" {
-			t.Fatalf("unexpected message for date %q: %s", d, err.Error())
+		var valErr *flights.ValidationError
+		if !errors.As(err, &valErr) || valErr.Field != "date" {
+			t.Fatalf("expected ValidationError with field=date for %q, got %T: %v", d, err, err)
 		}
 	}
 }

@@ -58,12 +58,18 @@ func (s *Service) Search(ctx context.Context, req FlightSearchRequest) (FlightSe
 		wg.Add(1)
 		go func(p FlightProvider) {
 			defer wg.Done()
-			flights, err := p.Search(ctx, req)
-			resultCh <- providerResult{
-				flights: flights,
-				err:     err,
-				name:    p.Name(),
-			}
+			// Recover from any panic inside the provider so a buggy adapter
+			// cannot crash the service or leak the goroutine.
+			defer func() {
+				if rec := recover(); rec != nil {
+					resultCh <- providerResult{
+						name: p.Name(),
+						err:  fmt.Errorf("provider panicked: %v", rec),
+					}
+				}
+			}()
+			fl, err := p.Search(ctx, req)
+			resultCh <- providerResult{flights: fl, err: err, name: p.Name()}
 		}(p)
 	}
 
@@ -88,7 +94,7 @@ func (s *Service) Search(ctx context.Context, req FlightSearchRequest) (FlightSe
 	}
 
 	if len(allFlights) == 0 {
-		return FlightSearchResponse{}, ErrAllProvidersFailed
+		return FlightSearchResponse{}, &AllProvidersFailedError{ProviderErrors: providerErrors}
 	}
 
 	// Sort by price ascending; tie-break by duration ascending.

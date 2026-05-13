@@ -1,7 +1,7 @@
 package flights
 
 import (
-	"errors"
+	"strings"
 	"time"
 )
 
@@ -26,19 +26,27 @@ type FlightSearchRequest struct {
 	Date        string
 }
 
+// Normalize uppercases IATA codes and trims whitespace from all fields.
+// Call this before Validate so users can pass lowercase codes freely.
+func (r *FlightSearchRequest) Normalize() {
+	r.Origin = strings.ToUpper(strings.TrimSpace(r.Origin))
+	r.Destination = strings.ToUpper(strings.TrimSpace(r.Destination))
+	r.Date = strings.TrimSpace(r.Date)
+}
+
 // Validate checks that all required fields are present and well-formed.
 func (r FlightSearchRequest) Validate() error {
 	if r.Origin == "" {
-		return errors.New("origin is required")
+		return &ValidationError{Field: "origin", Message: "is required"}
 	}
 	if r.Destination == "" {
-		return errors.New("destination is required")
+		return &ValidationError{Field: "destination", Message: "is required"}
 	}
 	if r.Date == "" {
-		return errors.New("date is required")
+		return &ValidationError{Field: "date", Message: "is required"}
 	}
 	if _, err := time.Parse("2006-01-02", r.Date); err != nil {
-		return errors.New("date must use YYYY-MM-DD format")
+		return &ValidationError{Field: "date", Message: "must use YYYY-MM-DD format"}
 	}
 	return nil
 }
